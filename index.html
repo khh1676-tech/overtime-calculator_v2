@@ -597,31 +597,66 @@
   }
 
   function saveData() {
-    const rows = [];
-    document.querySelectorAll("#workTable tbody tr").forEach(tr => {
-      rows.push({
-        date: tr.children[0].textContent,
-        weekday: tr.children[1].textContent,
-        hours: tr.children[2].querySelector("input").value,
-        type: tr.children[3].querySelector("select").value
+    try {
+      const rows = [];
+      let hasError = false;
+      
+      document.querySelectorAll("#workTable tbody tr").forEach(tr => {
+        const hoursInput = tr.children[2].querySelector("input");
+        const hoursValue = hoursInput.value;
+        
+        // 시간 형식 검증 (HH:MM)
+        if (!/^\d{2}:\d{2}$/.test(hoursValue)) {
+          hasError = true;
+          hoursInput.style.borderColor = '#ef4444';
+          setTimeout(() => {
+            hoursInput.style.borderColor = '';
+          }, 2000);
+        }
+        
+        rows.push({
+          date: tr.children[0].textContent,
+          weekday: tr.children[1].textContent,
+          hours: hoursValue,
+          type: tr.children[3].querySelector("select").value
+        });
       });
-    });
-    const data = { minWorkHours: document.getElementById("minWorkHours").value, year: currentYear, month: currentMonth, rows };
-    localStorage.setItem("overtimeDataV7", JSON.stringify(data));
-    alert("저장되었습니다!");
+      
+      if (hasError) {
+        showToast('근로시간 데이터 입력이 잘못되었습니다', 'error');
+        return;
+      }
+      
+      const data = { 
+        year: currentYear, 
+        month: currentMonth, 
+        rows 
+      };
+      
+      localStorage.setItem("overtimeData", JSON.stringify(data));
+      showToast('저장이 완료되었습니다!', 'success');
+    } catch (error) {
+      showToast('저장 중 오류가 발생했습니다', 'error');
+    }
   }
 
   function loadData() {
-    const data = JSON.parse(localStorage.getItem("overtimeDataV7") || "{}");
-    if (!data.rows) { alert("저장된 데이터가 없습니다."); return; }
-    document.getElementById("minWorkHours").value = data.minWorkHours || 184;
+    const data = JSON.parse(localStorage.getItem("overtimeData") || "{}");
+    if (!data.rows || data.rows.length === 0) {
+      showToast("저장된 데이터가 없습니다", "error");
+      return;
+    }
+    
+    // 저장된 년월로 변경
     if (data.year && data.month) {
       currentYear = data.year;
       currentMonth = data.month;
       updateMonthDisplay();
     }
+    
     const tbody = document.querySelector("#workTable tbody");
     tbody.innerHTML = "";
+    
     data.rows.forEach(row => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -644,7 +679,9 @@
       tbody.appendChild(tr);
       updateType(tr);
     });
+    
     calculate();
+    showToast("데이터를 불러왔습니다!", "success");
   }
 
   function clearTable() {
