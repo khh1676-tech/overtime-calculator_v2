@@ -307,6 +307,7 @@
       border-bottom: 2px solid #e2e8f0;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      position: relative;
     }
     .work-table td {
       padding: 12px 16px;
@@ -444,6 +445,51 @@
     .toast.hide {
       animation: slideOut 0.3s ease-out forwards;
     }
+
+    /* 툴팁 스타일 */
+    .tooltip {
+      position: absolute;
+      background: linear-gradient(135deg, #0066FF 0%, #00C73C 100%);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 4px 15px rgba(0, 102, 255, 0.4);
+      z-index: 1000;
+      white-space: nowrap;
+      animation: tooltipBounce 0.5s ease-in-out;
+      pointer-events: none;
+      right: -180px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .tooltip::before {
+      content: '';
+      position: absolute;
+      left: -8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-right: 8px solid #0066FF;
+    }
+    @keyframes tooltipBounce {
+      0%, 100% { transform: translateY(-50%) translateX(0); }
+      50% { transform: translateY(-50%) translateX(5px); }
+    }
+    .tooltip-fade-out {
+      animation: tooltipFadeOut 0.5s ease-out forwards;
+    }
+    @keyframes tooltipFadeOut {
+      to { 
+        opacity: 0;
+        transform: translateY(-50%) translateX(10px);
+      }
+    }
+
     @keyframes slideIn {
       from {
         transform: translateX(400px);
@@ -479,6 +525,25 @@
         transform: translateX(-50%);
         top: 20px;
         max-width: 90%;
+      }
+      .tooltip {
+        right: auto;
+        left: 50%;
+        top: auto;
+        bottom: -50px;
+        transform: translateX(-50%);
+      }
+      .tooltip::before {
+        left: 50%;
+        top: -8px;
+        transform: translateX(-50%);
+        border-right: 8px solid transparent;
+        border-left: 8px solid transparent;
+        border-bottom: 8px solid #0066FF;
+      }
+      @keyframes tooltipBounce {
+        0%, 100% { transform: translateX(-50%) translateY(0); }
+        50% { transform: translateX(-50%) translateY(5px); }
       }
       @keyframes slideIn {
         from {
@@ -560,18 +625,16 @@
               <div class="icon">📅</div>
               <h2>일별 근무 기록</h2>
             </div>
-            <div class="controls">
-              <button class="primary" onclick="saveData()">💾 저장</button>
-              <button class="secondary" onclick="loadData()">📂 불러오기</button>
-              <button class="secondary" onclick="clearTable()">🗑️ 초기화</button>
-            </div>
             <div class="table-container">
               <table class="work-table" id="workTable">
                 <thead>
                   <tr>
                     <th>날짜</th>
                     <th>요일</th>
-                    <th>근로시간</th>
+                    <th style="position: relative;">
+                      근로시간
+                      <span id="tooltipAnchor"></span>
+                    </th>
                     <th>근무형태</th>
                   </tr>
                 </thead>
@@ -598,6 +661,8 @@
   let currentYear = new Date().getFullYear();
   let currentMonth = new Date().getMonth() + 1;
   let currentUser = "";
+  let autoSaveTimer = null;
+  let hasShownTooltip = false;
   
   // 로그인 처리
   async function login() {
@@ -614,16 +679,23 @@
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('mainScreen').style.display = 'block';
     
-    // 데이터 불러오기
+    // 데이터 불러오기 (자동)
     await loadDataFromCloud();
     
     showToast(`${userName}님 환영합니다!`, 'success');
+    
+    // 툴팁 표시 (처음 로그인시에만)
+    if (!hasShownTooltip) {
+      setTimeout(showTooltip, 800);
+      hasShownTooltip = true;
+    }
   }
   
   // 로그아웃 처리
   function logout() {
     if (confirm('로그아웃 하시겠습니까?')) {
       currentUser = "";
+      hasShownTooltip = false;
       document.getElementById('userName').value = "";
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('mainScreen').style.display = 'none';
@@ -650,6 +722,24 @@
       toast.classList.add('hide');
       setTimeout(() => toast.remove(), 300);
     }, 2000);
+  }
+
+  // 툴팁 표시 함수
+  function showTooltip() {
+    const anchor = document.getElementById('tooltipAnchor');
+    if (!anchor) return;
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'tooltip';
+    tooltip.textContent = '근로 시간을 채워주세요';
+    
+    anchor.style.position = 'relative';
+    anchor.appendChild(tooltip);
+    
+    setTimeout(() => {
+      tooltip.classList.add('tooltip-fade-out');
+      setTimeout(() => tooltip.remove(), 500);
+    }, 3000);
   }
   
   // 페이지 로드시 현재 월로 자동 설정
@@ -688,14 +778,6 @@
   function updateMonthDisplay() {
     document.getElementById('monthDisplay').textContent = `${currentYear}년 ${currentMonth}월`;
   }
-  
-  function changeMonth(direction) {
-    currentMonth += direction;
-    if (currentMonth > 12) { currentMonth = 1; currentYear++; }
-    else if (currentMonth < 1) { currentMonth = 12; currentYear--; }
-    updateMonthDisplay();
-    generateMonth(currentYear, currentMonth);
-  }
 
   function generateMonth(year, month) {
     const tbody = document.querySelector("#workTable tbody");
@@ -728,9 +810,9 @@
 
       const input = tr.querySelector("input");
       const select = tr.querySelector("select");
-      input.addEventListener("blur", e => { e.target.value = normalizeTime(e.target.value); calculate(); });
-      input.addEventListener("input", () => calculate());
-      select.addEventListener("change", () => updateType(tr));
+      input.addEventListener("blur", e => { e.target.value = normalizeTime(e.target.value); autoSave(); });
+      input.addEventListener("input", () => autoSave());
+      select.addEventListener("change", () => { updateType(tr); autoSave(); });
       tbody.appendChild(tr);
       updateType(tr);
     }
@@ -809,13 +891,13 @@
     } else if (overtimeMinutes > 30 && overtimeMinutes <= 60) {
       message = "하루는 좀 빨리 퇴근하시죠? 😊";
     } else if (overtimeMinutes > 60 && overtimeMinutes <= 120) {
-      message = "너무 많이 쌓였다! 빨리 퇴근해요! 🌟";
+      message = "너무 많이 쌓았다! 빨리 퇴근해요! 🌟";
     } else if (overtimeMinutes > 120) {
       message = "4시에 가도 된다 이거는 ㅇㅈ? 🔥";
     } else if (overtimeMinutes >= -30 && overtimeMinutes < 0) {
       message = "오늘 조금만 채우고 가시죠? 💪";
     } else if (overtimeMinutes >= -60 && overtimeMinutes < -30) {
-      message = "살짝 위기 올 것 같은뎅..? 🤔";
+      message = "살짝 위기 올 것 같은뎁..? 🤔";
     } else if (overtimeMinutes >= -120 && overtimeMinutes < -60) {
       message = "이건 좀... 비상!!!!!!🪫";
     } else if (overtimeMinutes < -120) {
@@ -825,72 +907,57 @@
     messageEl.textContent = message;
   }
 
-  // 클라우드에 데이터 저장
-  async function saveData() {
-    if (!currentUser) {
-      showToast('로그인이 필요합니다', 'error');
-      return;
-    }
+  // 자동 저장 함수
+  function autoSave() {
+    calculate();
+    
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(async () => {
+      await saveDataToCloud();
+    }, 1000);
+  }
+
+  // 클라우드에 데이터 저장 (자동)
+  async function saveDataToCloud() {
+    if (!currentUser) return;
     
     try {
       const rows = [];
-      let hasError = false;
       
       document.querySelectorAll("#workTable tbody tr").forEach(tr => {
-        const hoursInput = tr.children[2].querySelector("input");
-        const hoursValue = hoursInput.value;
-        
-        if (!/^\d{2}:\d{2}$/.test(hoursValue)) {
-          hasError = true;
-          hoursInput.style.borderColor = '#ef4444';
-          setTimeout(() => {
-            hoursInput.style.borderColor = '';
-          }, 2000);
-        }
-        
         rows.push({
           date: tr.children[0].textContent,
           weekday: tr.children[1].textContent,
-          hours: hoursValue,
+          hours: tr.children[2].querySelector("input").value,
           type: tr.children[3].querySelector("select").value
         });
       });
       
-      if (hasError) {
-        showToast('근로시간 데이터 입력이 잘못되었습니다', 'error');
-        return;
-      }
-      
       const data = { 
         year: currentYear, 
         month: currentMonth, 
-        rows 
+        rows,
+        lastSaved: new Date().toISOString()
       };
       
       const storageKey = `overtime_${currentUser}_${currentYear}_${currentMonth}`;
       
       // window.storage가 없으면 localStorage 사용
       if (typeof window.storage !== 'undefined') {
-        const result = await window.storage.set(storageKey, JSON.stringify(data), true);
-        if (result) {
-          showToast('클라우드에 저장되었습니다!', 'success');
-        } else {
-          showToast('저장 중 오류가 발생했습니다', 'error');
-        }
+        await window.storage.set(storageKey, JSON.stringify(data), true);
       } else {
-        // fallback to localStorage
         localStorage.setItem(storageKey, JSON.stringify(data));
-        showToast('로컬에 저장되었습니다!', 'success');
       }
     } catch (error) {
-      console.error('Save error:', error);
+      console.error('Auto-save error:', error);
       // localStorage로 fallback
       try {
         const storageKey = `overtime_${currentUser}_${currentYear}_${currentMonth}`;
         const data = { 
           year: currentYear, 
           month: currentMonth, 
-          rows: []
+          rows: [],
+          lastSaved: new Date().toISOString()
         };
         document.querySelectorAll("#workTable tbody tr").forEach(tr => {
           data.rows.push({
@@ -901,23 +968,13 @@
           });
         });
         localStorage.setItem(storageKey, JSON.stringify(data));
-        showToast('로컬에 저장되었습니다!', 'success');
       } catch (e) {
-        showToast('저장 중 오류가 발생했습니다', 'error');
+        console.error('Fallback save error:', e);
       }
     }
   }
 
-  // 클라우드에서 데이터 불러오기
-  async function loadData() {
-    if (!currentUser) {
-      showToast('로그인이 필요합니다', 'error');
-      return;
-    }
-    
-    await loadDataFromCloud();
-  }
-  
+  // 클라우드에서 데이터 불러오기 (자동)
   async function loadDataFromCloud() {
     try {
       const storageKey = `overtime_${currentUser}_${currentYear}_${currentMonth}`;
@@ -945,7 +1002,8 @@
       }
       
       if (!data || !data.rows) {
-        showToast("저장된 데이터가 없습니다. 새로 시작합니다.", "error");
+        // 저장된 데이터가 없으면 새로운 달 생성
+        checkIfNewMonth();
         initializeCurrentMonth();
         return;
       }
@@ -975,26 +1033,43 @@
           </td>`;
         const input = tr.querySelector("input");
         const select = tr.querySelector("select");
-        input.addEventListener("blur", e => { e.target.value = normalizeTime(e.target.value); calculate(); });
-        input.addEventListener("input", () => calculate());
-        select.addEventListener("change", () => updateType(tr));
+        input.addEventListener("blur", e => { e.target.value = normalizeTime(e.target.value); autoSave(); });
+        input.addEventListener("input", () => autoSave());
+        select.addEventListener("change", () => { updateType(tr); autoSave(); });
         tbody.appendChild(tr);
         updateType(tr);
       });
       
       calculate();
-      showToast("데이터를 불러왔습니다!", "success");
     } catch (error) {
       console.error('Load error:', error);
-      showToast("저장된 데이터가 없습니다. 새로 시작합니다.", "error");
       initializeCurrentMonth();
     }
   }
 
-  function clearTable() {
-    if (confirm("정말 초기화하시겠습니까?")) {
-      generateMonth(currentYear, currentMonth);
+  // 다음 달로 넘어갔는지 확인하고 자동 초기화
+  function checkIfNewMonth() {
+    if (!currentUser) return;
+    
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const thisMonth = now.getMonth() + 1;
+    
+    const lastVisitKey = `${currentUser}_lastVisit`;
+    const lastVisit = localStorage.getItem(lastVisitKey);
+    
+    if (lastVisit) {
+      const [lastYear, lastMonth] = lastVisit.split('-').map(Number);
+      
+      // 월이 바뀌었으면 자동으로 현재 월로 설정
+      if (lastYear !== thisYear || lastMonth !== thisMonth) {
+        currentYear = thisYear;
+        currentMonth = thisMonth;
+      }
     }
+    
+    // 현재 방문 기록 저장
+    localStorage.setItem(lastVisitKey, `${thisYear}-${thisMonth}`);
   }
 
   // 엔터키로 로그인
