@@ -862,7 +862,7 @@
 
     if (type === "연차") {
       input.value = "08:00";
-      input.setAttribute("readonly", true);
+      input.removeAttribute("readonly");
       tr.classList.add('row-annual-leave');
     } else if (type === "재택(금)") {
       input.value = "08:00";
