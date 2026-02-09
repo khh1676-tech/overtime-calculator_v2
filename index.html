@@ -854,16 +854,18 @@
     calculate();
   }
 
-  function updateType(tr) {
+  function updateType(tr, keepValue = false) {
     const select = tr.querySelector("select");
     const input = tr.querySelector("input");
     const type = select.value;
     tr.classList.remove('row-annual-leave','row-work-from-home','row-holiday');
 
     if (type === "연차") {
-      input.value = "08:00";
-      input.removeAttribute("readonly");
+      if (!keepValue) {
+        input.value = "08:00";
+      }
       tr.classList.add('row-annual-leave');
+      input.removeAttribute("readonly");
     } else if (type === "재택(금)") {
       input.value = "08:00";
       input.setAttribute("readonly", true);
@@ -1072,7 +1074,7 @@
         input.addEventListener("input", () => autoSave());
         select.addEventListener("change", () => { updateType(tr); autoSave(); });
         tbody.appendChild(tr);
-        updateType(tr);
+        updateType(tr, true);
       });
       
       calculate();
